@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Помощник инсайдера</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --text: var(--tg-theme-text-color, #1c1c1e);
+    --hint: var(--tg-theme-hint-color, #8e8e93);
+    --accent: var(--tg-theme-button-color, #2481cc);
+    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
+    --red: #d93025;
+    --green: #1e8e3e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px 16px 96px; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .lead { color: var(--hint); margin: 0 0 16px; font-size: 14px; }
+  section { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  section[hidden] { display: none; }
+  .label { font-weight: 600; margin-bottom: 8px; }
+  .note { color: var(--hint); font-size: 13px; margin-top: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips button {
+    border: 1px solid var(--accent); background: transparent; color: var(--accent);
+    border-radius: 18px; padding: 7px 14px; font: inherit; font-size: 15px; cursor: pointer;
+  }
+  .chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+  input[type=date] {
+    font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--hint);
+    background: var(--bg); color: var(--text); width: 100%; max-width: 220px;
+  }
+  .hint-red { color: var(--red); }
+  .hint-green { color: var(--green); }
+  ul.periods { list-style: none; margin: 0; padding: 0; }
+  ul.periods li { padding: 4px 0; }
+  ul.periods li.past { color: var(--hint); }
+  ul.periods li.now { color: var(--red); font-weight: 600; }
+  #submit {
+    display: none; width: 100%; padding: 12px; border: 0; border-radius: 10px;
+    background: var(--accent); color: var(--accent-text); font: inherit; font-weight: 600;
+  }
+  #submit:disabled { opacity: .5; }
+</style>
+</head>
+<body>
+<h1>Проверка операции</h1>
+<p class="lead">Выберите ответы. Решение пришлёт бот в чат.</p>
+
+<section id="s-status">
+  <div class="label">Ваш признак инсайдера</div>
+  <div class="chips" data-field="status">
+    <button data-value="emitent_bitl">Эмитент+БИТЛ</button>
+    <button data-value="emitent">Эмитент</button>
+    <button data-value="bitl">БИТЛ</button>
+    <button data-value="purcb">ПУРЦБ</button>
+    <button data-value="non_insider">Я не инсайдер</button>
+  </div>
+  <div class="note">Где посмотреть признак: в профиле Пульс, раздел «О себе», тег «Инсайдер».</div>
+</section>
+
+<section id="s-operation" hidden>
+  <div class="label">Что планируете</div>
+  <div class="chips" data-field="action">
+    <button data-value="buy">Купить</button>
+    <button data-value="sell">Продать</button>
+  </div>
+  <div class="chips" data-field="instrument" style="margin-top:8px">
+    <button data-value="shares">Акции</button>
+    <button data-value="bonds">Облигации</button>
+    <button data-value="funds">Паи фондов</button>
+    <button data-value="derivatives">Производные</button>
+  </div>
+</section>
+
+<section id="s-issuer" hidden>
+  <div class="label">Финансовый инструмент какого эмитента планируете купить/продать?</div>
+  <div class="chips" data-field="issuer">
+    <button data-value="sber">Сбербанк</button>
+    <button data-value="other">Другой эмитент</button>
+  </div>
+</section>
+
+<section id="s-day" hidden>
+  <div class="label">Дата операции</div>
+  <input type="date" id="day">
+  <div class="note" id="day-hint"></div>
+</section>
+
+<section id="s-committee" hidden>
+  <div class="label">Участвуете ли вы в подготовке или голосовании на комитете по инсайдерскому вопросу,
+    связанному с клиентом-эмитентом ценных бумаг, которые планируете купить/продать?</div>
+  <div class="chips" data-field="committee">
+    <button data-value="yes">Да</button>
+    <button data-value="no">Нет</button>
+  </div>
+  <div class="note">Это видно в АС Сенат в повестке активных для вас заседаний. Инсайдерские вопросы размечены.</div>
+</section>
+
+<section id="s-deal" hidden>
+  <div class="label">Являетесь ли вы членом команды по кредитно-инвестиционной сделке с клиентом-эмитентом
+    ценных бумаг, которые планируете купить/продать?</div>
+  <div class="chips" data-field="deal">
+    <button data-value="yes">Да</button>
+    <button data-value="no">Нет</button>
+  </div>
+  <div class="note">Актуально для КМ, КИ и других закреплённых участников сделки. Закрепление отражено в ЕФС.</div>
+</section>
+
+<section id="s-orders" hidden>
+  <div class="label">Есть ли у вас в работе или доступе поручения клиента на сделку с финансовыми
+    инструментами эмитента ценных бумаг, ещё не выставленные на биржу?</div>
+  <div class="chips" data-field="orders">
+    <button data-value="yes">Да</button>
+    <button data-value="no">Нет</button>
+  </div>
+</section>
+
+<section id="s-periods">
+  <div class="label">Запрещённые периоды по отчётности Сбербанка</div>
+  <ul class="periods" id="periods"></ul>
+  <div class="note">Действуют для признаков «Эмитент» и «Эмитент+БИТЛ» при операциях с бумагами Сбербанка.</div>
+</section>
+
+<button id="submit" disabled>Проверить</button>
+
+<script>
+(function () {
+  var tg = window.Telegram && window.Telegram.WebApp;
+  // у формы, открытой кнопкой клавиатуры, initData пустой, поэтому проверяем платформу
+  var inTelegram = !!(tg && tg.platform && tg.platform !== 'unknown');
+  var params = new URLSearchParams(location.search);
+  var state = { status: params.get('s') || null, action: null, instrument: null, issuer: null,
+                committee: null, deal: null, orders: null };
+  var CALENDAR = ['emitent', 'emitent_bitl'];
+
+  function parseDay(s) { return new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)); }
+  function fmt(d) { return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + d.getFullYear(); }
+  var windows = (params.get('w') || '').split(',').filter(Boolean).map(function (pair) {
+    var p = pair.split('-');
+    return { start: parseDay(p[0]), end: parseDay(p[1]) };
+  });
+  var years = (params.get('y') || '').split(',').filter(Boolean).map(Number);
+  // сегодня по Москве, в формате YYYY-MM-DD
+  var today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
+  var dayInput = document.getElementById('day');
+  dayInput.value = today;
+
+  function selectedDay() {
+    var p = (dayInput.value || today).split('-');
+    return new Date(+p[0], +p[1] - 1, +p[2]);
+  }
+
+  // Какие вопросы нужны и всё ли заполнено: та же схема, что в rules.py
+  function plan() {
+    var s = state, show = ['status'];
+    if (!s.status) return { show: show, done: false };
+    if (s.status === 'non_insider') return { show: show, done: true };
+    show.push('operation');
+    if (s.status === 'purcb') { show.push('orders'); return { show: show, done: s.orders !== null }; }
+    show.push('issuer');
+    if (!s.issuer) return { show: show, done: false };
+    if (s.issuer === 'sber') {
+      if (CALENDAR.indexOf(s.status) >= 0) show.push('day');
+      return { show: show, done: true };
+    }
+    if (s.status === 'emitent') return { show: show, done: true };
+    show.push('committee');
+    if (s.committee === null) return { show: show, done: false };
+    if (s.committee) return { show: show, done: true };
+    show.push('deal');
+    return { show: show, done: s.deal !== null };
+  }
+
+  function render() {
+    var p = plan();
+    ['operation', 'issuer', 'day', 'committee', 'deal', 'orders'].forEach(function (name) {
+      document.getElementById('s-' + name).hidden = p.show.indexOf(name) < 0;
+    });
+    document.querySelectorAll('.chips').forEach(function (group) {
+      var value = state[group.dataset.field];
+      group.querySelectorAll('button').forEach(function (b) {
+        var v = b.dataset.value, mine = v === 'yes' ? value === true : v === 'no' ? value === false : v === value;
+        b.setAttribute('aria-pressed', mine ? 'true' : 'false');
+      });
+    });
+    renderDayHint();
+    if (inTelegram) {
+      tg.MainButton.setText('Проверить');
+      if (p.done) tg.MainButton.show(); else tg.MainButton.hide();
+    } else {
+      var btn = document.getElementById('submit');
+      btn.style.display = 'block';
+      btn.disabled = true;
+      btn.textContent = 'Откройте форму из бота в Telegram';
+    }
+  }
+
+  function renderDayHint() {
+    var hint = document.getElementById('day-hint'), d = selectedDay();
+    var w = windows.filter(function (x) { return x.start <= d && d <= x.end; })[0];
+    if (w) {
+      hint.className = 'note hint-red';
+      hint.textContent = '⛔ Дата попадает в запрещённый период с ' + fmt(w.start) + ' по ' + fmt(w.end) + '.';
+    } else if (years.indexOf(d.getFullYear()) < 0) {
+      hint.className = 'note hint-red';
+      hint.textContent = 'Календарь на ' + d.getFullYear() + ' год ещё не загружен.';
+    } else {
+      hint.className = 'note hint-green';
+      hint.textContent = 'На эту дату запрещённого периода нет.';
+    }
+  }
+
+  function renderPeriods() {
+    var list = document.getElementById('periods'), now = selectedDay();
+    if (!windows.length) {
+      list.innerHTML = '<li class="past">Календарь не загружен.</li>';
+      return;
+    }
+    windows.forEach(function (w) {
+      var li = document.createElement('li');
+      li.textContent = fmt(w.start) + ' – ' + fmt(w.end);
+      if (w.end < now) li.className = 'past';
+      else if (w.start <= now) { li.className = 'now'; li.textContent += ' (сейчас)'; }
+      list.appendChild(li);
+    });
+  }
+
+  document.querySelectorAll('.chips').forEach(function (group) {
+    group.addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      var field = group.dataset.field, v = b.dataset.value;
+      state[field] = v === 'yes' ? true : v === 'no' ? false : v;
+      // ответы ниже по схеме зависят от выбранного выше
+      if (field === 'status' || field === 'issuer') { state.committee = state.deal = state.orders = null; }
+      if (field === 'status') state.issuer = null;
+      if (field === 'committee') state.deal = null;
+      render();
+    });
+  });
+  dayInput.addEventListener('change', renderDayHint);
+
+  function submit() {
+    var answers = {};
+    ['committee', 'deal', 'orders'].forEach(function (k) { if (state[k] !== null) answers[k] = state[k]; });
+    tg.sendData(JSON.stringify({
+      status: state.status, action: state.action, instrument: state.instrument,
+      issuer: state.issuer, day: dayInput.value || today, answers: answers
+    }));
+  }
+
+  if (inTelegram) {
+    tg.ready();
+    tg.expand();
+    tg.MainButton.onClick(submit);
+  }
+  renderPeriods();
+  render();
+})();
+</script>
+</body>
+</html>
