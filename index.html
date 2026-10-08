@@ -43,16 +43,25 @@
   ul.periods li { padding: 4px 0; }
   ul.periods li.past { color: var(--hint); }
   ul.periods li.now { color: var(--red); font-weight: 600; }
-  #submit {
-    display: none; width: 100%; padding: 12px; border: 0; border-radius: 10px;
-    background: var(--accent); color: var(--accent-text); font: inherit; font-weight: 600;
+  #result { border-left: 4px solid var(--green); }
+  #result.bad { border-left-color: var(--red); }
+  #result .op { color: var(--hint); font-style: italic; font-size: 14px; margin-bottom: 8px; }
+  #result .verdict { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  #result.bad .verdict { color: var(--red); }
+  #result.ok .verdict { color: var(--green); }
+  #result p { margin: 6px 0 0; }
+  #result details { margin-top: 10px; }
+  #result summary { color: var(--accent); cursor: pointer; }
+  #result ul { margin: 6px 0 0; padding-left: 20px; }
+  #to-chat {
+    margin-top: 12px; border: 0; background: none; color: var(--accent); padding: 0;
+    font: inherit; font-size: 14px; cursor: pointer;
   }
-  #submit:disabled { opacity: .5; }
 </style>
 </head>
 <body>
 <h1>Проверка операции</h1>
-<p class="lead">Выберите ответы. Решение пришлёт бот в чат.</p>
+<p class="lead">Выберите ответы, решение появится ниже.</p>
 
 <section id="s-status">
   <div class="label">Ваш признак инсайдера</div>
@@ -123,13 +132,31 @@
   </div>
 </section>
 
+<section id="result" hidden aria-live="polite">
+  <div class="op" id="r-op"></div>
+  <div class="verdict" id="r-verdict"></div>
+  <div id="r-text"></div>
+  <details id="r-terms" hidden>
+    <summary>Условия</summary>
+    <p>⚠️ Перед совершением операции убедитесь, что:</p>
+    <ul>
+      <li>вы не используете инсайдерскую информацию;</li>
+      <li>ваши действия не направлены на манипулирование рынком;</li>
+      <li>брокерский, инвестиционный или депо счёт, по которому планируете операцию,
+        сертифицирован в комплаенс.</li>
+    </ul>
+    <p class="note">Если операция по внешнему брокерскому счёту, предоставьте отчёт на адрес
+      PAD@sberbank.ru не позднее 10-ти дней следующего месяца.</p>
+  </details>
+  <button id="to-chat" hidden>Сохранить ответ в чате с ботом</button>
+</section>
+
 <section id="s-periods">
   <div class="label">Запрещённые периоды по отчётности Сбербанка</div>
   <ul class="periods" id="periods"></ul>
   <div class="note">Действуют для признаков «Эмитент» и «Эмитент+БИТЛ» при операциях с бумагами Сбербанка.</div>
 </section>
 
-<button id="submit" disabled>Проверить</button>
 
 <script>
 (function () {
@@ -145,7 +172,7 @@
   function fmt(d) { return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + d.getFullYear(); }
   var windows = (params.get('w') || '').split(',').filter(Boolean).map(function (pair) {
     var p = pair.split('-');
-    return { start: parseDay(p[0]), end: parseDay(p[1]) };
+    return { start: parseDay(p[0]), end: parseDay(p[1]), publication: p[2] ? parseDay(p[2]) : null };
   });
   var years = (params.get('y') || '').split(',').filter(Boolean).map(Number);
   // сегодня по Москве, в формате YYYY-MM-DD
@@ -179,6 +206,94 @@
     return { show: show, done: s.deal !== null };
   }
 
+  var LABELS = { emitent_bitl: 'Эмитент+БИТЛ', emitent: 'Эмитент', bitl: 'БИТЛ', purcb: 'ПУРЦБ' };
+  var ACTIONS = { buy: 'покупка', sell: 'продажа' };
+  var INSTRUMENTS = { shares: 'акций', bonds: 'облигаций', funds: 'паёв фондов', derivatives: 'производных' };
+
+  // Решение: та же логика, что rules.evaluate в боте
+  function verdict(p) {
+    var s = state;
+    if (s.status === 'non_insider') return { ok: true, reason: 'non_insider' };
+    if (s.status === 'purcb') return s.orders ? { ok: false, reason: 'orders' } : { ok: true, reason: 'clear' };
+    if (s.issuer === 'sber') {
+      if (s.status === 'bitl') return { ok: true, reason: 'clear' };
+      var d = selectedDay();
+      var w = windows.filter(function (x) { return x.start <= d && d <= x.end; })[0];
+      if (w) return { ok: false, reason: 'calendar', window: w };
+      if (years.indexOf(d.getFullYear()) < 0) return { ok: false, reason: 'no_data', year: d.getFullYear() };
+      return { ok: true, reason: 'clear', next: windows.filter(function (x) { return x.start > d; })[0] };
+    }
+    if (s.status === 'emitent') return { ok: true, reason: 'clear' };
+    if (s.committee) return { ok: false, reason: 'committee' };
+    if (s.deal) return { ok: false, reason: 'deal' };
+    return { ok: true, reason: 'clear' };
+  }
+
+  function operationLine(p) {
+    var s = state, parts = [LABELS[s.status]];
+    var what = [ACTIONS[s.action], INSTRUMENTS[s.instrument]].filter(Boolean).join(' ');
+    if (what) parts.push(what);
+    if (s.issuer) parts.push(s.issuer === 'sber' ? 'Сбербанк' : 'другой эмитент');
+    if (p.show.indexOf('day') >= 0) parts.push(fmt(selectedDay()));
+    return parts.filter(Boolean).join(', ');
+  }
+
+  var TEXTS = {
+    committee: 'Для вас действует запрещённый период до закрытия инсайдерского вопроса в АС Сенат ' +
+      '(статус «завершён», «принят» или «подписан всеми») ввиду вашего участия в подготовке или ' +
+      'голосовании на комитете по инсайдерскому вопросу, связанному с клиентом-эмитентом.',
+    deal: 'На работника, участвующего в кредитно-инвестиционной сделке с клиентом-эмитентом ценных ' +
+      'бумаг, распространяется запрещённый период до подписания договора по сделке.',
+    orders: 'В отношении инсайдера по признаку ПУРЦБ действует запрещённый период между получением ' +
+      'поручения клиента на сделку с финансовыми инструментами эмитента и выставлением его на биржу.',
+    non_insider: 'Вы указали, что не являетесь инсайдером, поэтому инсайдерские ограничения к вам не ' +
+      'применяются. Если вы не уверены, проверьте признак в Пульс: «О себе» → тег «Инсайдер».',
+    clear: 'Для вас в настоящий момент ограничения не выявлены. Вы можете совершить операцию. ' +
+      'Ознакомьтесь с условиями.'
+  };
+  var PULSE = 'Информация о запрещённом периоде направляется на вашу электронную почту, полный график ' +
+    'размещён в разделе «О себе» в Пульс по тегу «Инсайдер».';
+
+  function verdictLines(v) {
+    if (v.reason === 'calendar') {
+      var w = v.window;
+      return ['Действует запрещённый период, связанный с подготовкой отчётности Банка, с ' + fmt(w.start) +
+        ' по ' + fmt(w.end) + ' включительно' + (w.publication ? ' (публикация ' + fmt(w.publication) + ')' : '') + '.',
+        PULSE];
+    }
+    if (v.reason === 'no_data') {
+      return ['Считать операцию разрешённой нельзя: календарь отчётности на ' + v.year +
+        ' год ещё не загружен. Уточните график в комплаенс.'];
+    }
+    var lines = [TEXTS[v.reason]];
+    if (v.next) lines.push('Следующий запрещённый период: ' + fmt(v.next.start) + ' — ' + fmt(v.next.end) + '.');
+    return lines;
+  }
+
+  var shownKey = null;
+  function renderResult(p) {
+    var box = document.getElementById('result');
+    if (!p.done) { box.hidden = true; shownKey = null; return; }
+    var v = verdict(p);
+    box.hidden = false;
+    box.className = v.ok ? 'ok' : 'bad';
+    document.getElementById('r-op').textContent = v.reason === 'non_insider' ? '' : operationLine(p);
+    document.getElementById('r-verdict').textContent =
+      v.reason === 'non_insider' ? 'Ограничений нет' : v.ok ? '🟢 МОЖНО' : '⛔ ЗАПРЕЩЕНО';
+    var text = document.getElementById('r-text');
+    text.textContent = '';
+    verdictLines(v).forEach(function (line) {
+      var el = document.createElement('p');
+      el.textContent = line;
+      text.appendChild(el);
+    });
+    document.getElementById('r-terms').hidden = !(v.ok && v.reason !== 'non_insider');
+    document.getElementById('to-chat').hidden = !inTelegram;
+    // прокручиваем к ответу, только когда он поменялся
+    var key = box.className + text.textContent;
+    if (key !== shownKey) { shownKey = key; box.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  }
+
   function render() {
     var p = plan();
     ['operation', 'issuer', 'day', 'committee', 'deal', 'orders'].forEach(function (name) {
@@ -192,14 +307,10 @@
       });
     });
     renderDayHint();
+    renderResult(p);
     if (inTelegram) {
-      tg.MainButton.setText('Проверить');
+      tg.MainButton.setText('Готово');
       if (p.done) tg.MainButton.show(); else tg.MainButton.hide();
-    } else {
-      var btn = document.getElementById('submit');
-      btn.style.display = 'block';
-      btn.disabled = true;
-      btn.textContent = 'Откройте форму из бота в Telegram';
     }
   }
 
@@ -246,9 +357,10 @@
       render();
     });
   });
-  dayInput.addEventListener('change', renderDayHint);
+  dayInput.addEventListener('change', render);
 
-  function submit() {
+  // по желанию: отправить ответы боту, он запомнит признак и повторит решение в чате
+  function toChat() {
     var answers = {};
     ['committee', 'deal', 'orders'].forEach(function (k) { if (state[k] !== null) answers[k] = state[k]; });
     tg.sendData(JSON.stringify({
@@ -260,7 +372,8 @@
   if (inTelegram) {
     tg.ready();
     tg.expand();
-    tg.MainButton.onClick(submit);
+    tg.MainButton.onClick(function () { tg.close(); });
+    document.getElementById('to-chat').addEventListener('click', toChat);
   }
   renderPeriods();
   render();
