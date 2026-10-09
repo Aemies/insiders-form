@@ -172,15 +172,28 @@
   var params = new URLSearchParams(location.search);
   var state = { status: params.get('s') || null, issuer: null,
                 committee: null, deal: null, orders: null };
-  var CALENDAR = ['emitent', 'emitent_bitl'];
+  var CALENDAR = ['emitent', 'emitent_bitl'];  // к ним применяется общий календарь
 
   function parseDay(s) { return new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)); }
   function fmt(d) { return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + d.getFullYear(); }
-  var windows = (params.get('w') || '').split(',').filter(Boolean).map(function (pair) {
-    var p = pair.split('-');
-    return { start: parseDay(p[0]), end: parseDay(p[1]), publication: p[2] ? parseDay(p[2]) : null };
-  });
-  var years = (params.get('y') || '').split(',').filter(Boolean).map(Number);
+  function readCalendar(suffix) {
+    return {
+      windows: (params.get('w' + suffix) || '').split(',').filter(Boolean).map(function (pair) {
+        var p = pair.split('-');
+        return { start: parseDay(p[0]), end: parseDay(p[1]), publication: p[2] ? parseDay(p[2]) : null };
+      }),
+      years: (params.get('y' + suffix) || '').split(',').filter(Boolean).map(Number)
+    };
+  }
+  var common = readCalendar('');
+  // Календарь признака: отдельный (w_признак), иначе общий для Эмитент и Эмитент+БИТЛ, иначе нет
+  function calendarFor(status) {
+    if (params.has('w_' + status)) return readCalendar('_' + status);
+    return CALENDAR.indexOf(status) >= 0 ? common : null;
+  }
+  function inWindow(cal, d) { return cal.windows.filter(function (x) { return x.start <= d && d <= x.end; })[0]; }
+  // нет данных на год: для признаков общего календаря это «нельзя», для остальных календаря просто нет
+  function noData(cal, d) { return cal.years.indexOf(d.getFullYear()) < 0 && CALENDAR.indexOf(state.status) >= 0; }
   // сегодня по Москве, в формате YYYY-MM-DD
   var today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
   var dayInput = document.getElementById('day');
@@ -196,11 +209,15 @@
     var s = state, show = ['status'];
     if (!s.status) return { show: show, done: false };
     if (s.status === 'non_insider') return { show: show, done: true };
-    if (s.status === 'purcb') { show.push('orders'); return { show: show, done: s.orders !== null }; }
+    if (s.status === 'purcb') {
+      show.push('orders');
+      if (s.orders === false && calendarFor('purcb')) show.push('day');  // отдельный календарь ПУРЦБ
+      return { show: show, done: s.orders !== null };
+    }
     show.push('issuer');
     if (!s.issuer) return { show: show, done: false };
     if (s.issuer === 'sber') {
-      if (CALENDAR.indexOf(s.status) >= 0) show.push('day');
+      if (calendarFor(s.status)) show.push('day');
       return { show: show, done: true };
     }
     if (s.status === 'emitent') return { show: show, done: true };
@@ -217,14 +234,14 @@
   function verdict(p) {
     var s = state;
     if (s.status === 'non_insider') return { ok: true, reason: 'non_insider' };
-    if (s.status === 'purcb') return s.orders ? { ok: false, reason: 'orders' } : { ok: true, reason: 'clear' };
-    if (s.issuer === 'sber') {
-      if (s.status === 'bitl') return { ok: true, reason: 'clear' };
-      var d = selectedDay();
-      var w = windows.filter(function (x) { return x.start <= d && d <= x.end; })[0];
+    if (s.status === 'purcb' && s.orders) return { ok: false, reason: 'orders' };
+    if (s.status === 'purcb' || s.issuer === 'sber') {
+      var cal = calendarFor(s.status);
+      if (!cal) return { ok: true, reason: 'clear' };
+      var d = selectedDay(), w = inWindow(cal, d);
       if (w) return { ok: false, reason: 'calendar', window: w };
-      if (years.indexOf(d.getFullYear()) < 0) return { ok: false, reason: 'no_data', year: d.getFullYear() };
-      return { ok: true, reason: 'clear', next: windows.filter(function (x) { return x.start > d; })[0] };
+      if (noData(cal, d)) return { ok: false, reason: 'no_data', year: d.getFullYear() };
+      return { ok: true, reason: 'clear', next: cal.windows.filter(function (x) { return x.start > d; })[0] };
     }
     if (s.status === 'emitent') return { ok: true, reason: 'clear' };
     if (s.committee) return { ok: false, reason: 'committee' };
@@ -291,7 +308,7 @@
       text.appendChild(el);
     });
     document.getElementById('r-terms').hidden = !(v.ok && v.reason !== 'non_insider');
-    // календарь показываем только там, где он влияет на ответ: Эмитент и Эмитент+БИТЛ, бумаги Сбербанка
+    // календарь показываем только там, где он влияет на ответ: признаки с календарём, бумаги Сбербанка
     var calendarShown = p.show.indexOf('day') >= 0;
     document.getElementById('r-periods').hidden = !calendarShown;
     if (calendarShown) renderPeriods();
@@ -322,11 +339,13 @@
 
   function renderDayHint() {
     var hint = document.getElementById('day-hint'), d = selectedDay();
-    var w = windows.filter(function (x) { return x.start <= d && d <= x.end; })[0];
+    var cal = calendarFor(state.status);
+    if (!cal) return;
+    var w = inWindow(cal, d);
     if (w) {
       hint.className = 'note hint-red';
       hint.textContent = '⛔ Дата попадает в запрещённый период с ' + fmt(w.start) + ' по ' + fmt(w.end) + '.';
-    } else if (years.indexOf(d.getFullYear()) < 0) {
+    } else if (noData(cal, d)) {
       hint.className = 'note hint-red';
       hint.textContent = 'Календарь на ' + d.getFullYear() + ' год ещё не загружен.';
     } else {
@@ -337,6 +356,7 @@
 
   function renderPeriods() {
     var list = document.getElementById('periods'), tp = today.split('-');
+    var windows = calendarFor(state.status).windows;
     var now = new Date(+tp[0], +tp[1] - 1, +tp[2]);
     list.textContent = '';
     if (!windows.length) {
