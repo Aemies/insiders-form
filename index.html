@@ -7,54 +7,77 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   :root {
-    --bg: var(--tg-theme-bg-color, #ffffff);
-    --text: var(--tg-theme-text-color, #1c1c1e);
-    --hint: var(--tg-theme-hint-color, #8e8e93);
-    --accent: var(--tg-theme-button-color, #2481cc);
-    --accent-text: var(--tg-theme-button-text-color, #ffffff);
-    --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
-    --red: #d93025;
-    --green: #1e8e3e;
+    /* палитра */
+    --wine: #8B2F37;
+    --sand: #D9D0C4;
+    --slate: #525F6E;
+    --navy: #243142;
+    --ink: #161C26;
+
+    --bg: var(--ink);
+    --card: var(--navy);
+    --text: var(--sand);
+    --hint: #97A1AD;
+    --line: var(--slate);
+    --accent: var(--wine);
+    --accent-text: #F3ECE3;
+    --red: #E0727B;
+    --green: #7FBB9E;
   }
   * { box-sizing: border-box; }
+  html { background: var(--bg); color-scheme: dark; }
   body {
-    margin: 0; padding: 16px 16px 96px; background: var(--bg); color: var(--text);
-    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0; padding: 20px 16px 96px; background: var(--bg); color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .lead { color: var(--hint); margin: 0 0 16px; font-size: 14px; }
-  section { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  h1 {
+    font-weight: 700; font-size: 22px; line-height: 1.2; margin: 0 0 6px;
+  }
+  h1::after { content: ""; display: block; width: 40px; height: 3px; background: var(--wine); margin-top: 10px; border-radius: 2px; }
+  .lead { color: var(--hint); margin: 0 0 18px; font-size: 14px; }
+  section {
+    background: var(--card); border: 1px solid rgba(82, 95, 110, .45);
+    border-radius: 14px; padding: 14px; margin-bottom: 12px;
+  }
   section[hidden] { display: none; }
-  .label { font-weight: 600; margin-bottom: 8px; }
-  .note { color: var(--hint); font-size: 13px; margin-top: 8px; }
+  .label { font-weight: 600; margin-bottom: 10px; }
+  .note { color: var(--hint); font-size: 13px; margin-top: 10px; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chips button {
-    border: 1px solid var(--accent); background: transparent; color: var(--accent);
-    border-radius: 18px; padding: 7px 14px; font: inherit; font-size: 15px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--ink); color: var(--text);
+    border-radius: 20px; padding: 8px 15px; font: inherit; font-size: 15px; cursor: pointer;
+    transition: background-color .15s, border-color .15s;
+    -webkit-tap-highlight-color: transparent;
   }
-  .chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+  .chips button[aria-pressed="true"] { background: var(--wine); border-color: var(--wine); color: var(--accent-text); }
   input[type=date] {
-    font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--hint);
-    background: var(--bg); color: var(--text); width: 100%; max-width: 220px;
+    font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--ink); color: var(--text); width: 100%; max-width: 220px; color-scheme: dark;
   }
+  input[type=date]:focus { outline: 2px solid var(--wine); outline-offset: 1px; }
   .hint-red { color: var(--red); }
   .hint-green { color: var(--green); }
   ul.periods { list-style: none; margin: 0; padding: 0; }
-  ul.periods li { padding: 4px 0; }
-  ul.periods li.past { color: var(--hint); }
+  ul.periods li { padding: 6px 0; border-bottom: 1px solid rgba(82, 95, 110, .35); }
+  ul.periods li:last-child { border-bottom: 0; }
+  ul.periods li.past { color: var(--hint); opacity: .7; }
   ul.periods li.now { color: var(--red); font-weight: 600; }
   #result { border-left: 4px solid var(--green); }
-  #result.bad { border-left-color: var(--red); }
+  #result.ok { background: linear-gradient(135deg, rgba(127, 187, 158, .22), var(--navy) 60%); }
+  #result.bad { border-left-color: var(--wine); background: linear-gradient(135deg, rgba(139, 47, 55, .28), var(--navy) 60%); }
   #result .op { color: var(--hint); font-style: italic; font-size: 14px; margin-bottom: 8px; }
-  #result .verdict { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  #result .verdict {
+    font-size: 19px; font-weight: 700; margin-bottom: 8px;
+  }
   #result.bad .verdict { color: var(--red); }
   #result.ok .verdict { color: var(--green); }
   #result p { margin: 6px 0 0; }
-  #result p.quote { border-left: 3px solid var(--hint); padding-left: 10px; color: var(--hint); }
-  #result details { margin-top: 10px; }
-  #result summary { color: var(--accent); cursor: pointer; }
+  #result p.quote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--hint); }
+  #result details { margin-top: 12px; }
+  #result summary { color: var(--sand); cursor: pointer; text-decoration: underline; text-decoration-color: var(--wine); text-underline-offset: 3px; }
   #result ul { margin: 6px 0 0; padding-left: 20px; }
-  #r-periods { margin-top: 10px; }
+  #r-periods { margin-top: 12px; }
   #r-periods .label { font-size: 14px; margin: 0 0 4px; }
 </style>
 </head>
@@ -347,6 +370,12 @@
   if (inTelegram) {
     tg.ready();
     tg.expand();
+    // цвета шапки и кнопки под палитру формы
+    try {
+      tg.setHeaderColor('#161C26');
+      tg.setBackgroundColor('#161C26');
+      tg.MainButton.setParams({ color: '#8B2F37', text_color: '#F3ECE3' });
+    } catch (e) {}
     tg.MainButton.onClick(function () { tg.close(); });
   }
   render();
