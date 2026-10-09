@@ -54,10 +54,8 @@
   #result details { margin-top: 10px; }
   #result summary { color: var(--accent); cursor: pointer; }
   #result ul { margin: 6px 0 0; padding-left: 20px; }
-  #to-chat {
-    margin-top: 12px; border: 0; background: none; color: var(--accent); padding: 0;
-    font: inherit; font-size: 14px; cursor: pointer;
-  }
+  #r-periods { margin-top: 10px; }
+  #r-periods .label { font-size: 14px; margin: 0 0 4px; }
 </style>
 </head>
 <body>
@@ -74,20 +72,6 @@
     <button data-value="non_insider">Я не инсайдер</button>
   </div>
   <div class="note">Где посмотреть признак: в профиле Пульс, раздел «О себе», тег «Инсайдер».</div>
-</section>
-
-<section id="s-operation" hidden>
-  <div class="label">Что планируете</div>
-  <div class="chips" data-field="action">
-    <button data-value="buy">Купить</button>
-    <button data-value="sell">Продать</button>
-  </div>
-  <div class="chips" data-field="instrument" style="margin-top:8px">
-    <button data-value="shares">Акции</button>
-    <button data-value="bonds">Облигации</button>
-    <button data-value="funds">Паи фондов</button>
-    <button data-value="derivatives">Производные</button>
-  </div>
 </section>
 
 <section id="s-issuer" hidden>
@@ -149,14 +133,12 @@
     <p class="note">Если операция по внешнему брокерскому счёту, предоставьте отчёт на адрес
       PAD@sberbank.ru не позднее 10-ти дней следующего месяца.</p>
   </details>
-  <button id="to-chat" hidden>Сохранить ответ в чате с ботом</button>
+  <div id="r-periods" hidden>
+    <div class="label">Запрещённые периоды по отчётности Сбербанка</div>
+    <ul class="periods" id="periods"></ul>
+  </div>
 </section>
 
-<section id="s-periods">
-  <div class="label">Запрещённые периоды по отчётности Сбербанка</div>
-  <ul class="periods" id="periods"></ul>
-  <div class="note">Действуют для признаков «Эмитент» и «Эмитент+БИТЛ» при операциях с бумагами Сбербанка.</div>
-</section>
 
 
 <script>
@@ -165,7 +147,7 @@
   // у формы, открытой кнопкой клавиатуры, initData пустой, поэтому проверяем платформу
   var inTelegram = !!(tg && tg.platform && tg.platform !== 'unknown');
   var params = new URLSearchParams(location.search);
-  var state = { status: params.get('s') || null, action: null, instrument: null, issuer: null,
+  var state = { status: params.get('s') || null, issuer: null,
                 committee: null, deal: null, orders: null };
   var CALENDAR = ['emitent', 'emitent_bitl'];
 
@@ -191,7 +173,6 @@
     var s = state, show = ['status'];
     if (!s.status) return { show: show, done: false };
     if (s.status === 'non_insider') return { show: show, done: true };
-    show.push('operation');
     if (s.status === 'purcb') { show.push('orders'); return { show: show, done: s.orders !== null }; }
     show.push('issuer');
     if (!s.issuer) return { show: show, done: false };
@@ -208,8 +189,6 @@
   }
 
   var LABELS = { emitent_bitl: 'Эмитент+БИТЛ', emitent: 'Эмитент', bitl: 'БИТЛ', purcb: 'ПУРЦБ' };
-  var ACTIONS = { buy: 'покупка', sell: 'продажа' };
-  var INSTRUMENTS = { shares: 'акций', bonds: 'облигаций', funds: 'паёв фондов', derivatives: 'производных' };
 
   // Решение: та же логика, что rules.evaluate в боте
   function verdict(p) {
@@ -232,8 +211,6 @@
 
   function operationLine(p) {
     var s = state, parts = [LABELS[s.status]];
-    var what = [ACTIONS[s.action], INSTRUMENTS[s.instrument]].filter(Boolean).join(' ');
-    if (what) parts.push(what);
     if (s.issuer) parts.push(s.issuer === 'sber' ? 'Сбербанк' : 'другой эмитент');
     if (p.show.indexOf('day') >= 0) parts.push(fmt(selectedDay()));
     return parts.filter(Boolean).join(', ');
@@ -291,7 +268,10 @@
       text.appendChild(el);
     });
     document.getElementById('r-terms').hidden = !(v.ok && v.reason !== 'non_insider');
-    document.getElementById('to-chat').hidden = !inTelegram;
+    // календарь показываем только там, где он влияет на ответ: Эмитент и Эмитент+БИТЛ, бумаги Сбербанка
+    var calendarShown = p.show.indexOf('day') >= 0;
+    document.getElementById('r-periods').hidden = !calendarShown;
+    if (calendarShown) renderPeriods();
     // прокручиваем к ответу, только когда он поменялся
     var key = box.className + text.textContent;
     if (key !== shownKey) { shownKey = key; box.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
@@ -299,7 +279,7 @@
 
   function render() {
     var p = plan();
-    ['operation', 'issuer', 'day', 'committee', 'deal', 'orders'].forEach(function (name) {
+    ['issuer', 'day', 'committee', 'deal', 'orders'].forEach(function (name) {
       document.getElementById('s-' + name).hidden = p.show.indexOf(name) < 0;
     });
     document.querySelectorAll('.chips').forEach(function (group) {
@@ -333,7 +313,9 @@
   }
 
   function renderPeriods() {
-    var list = document.getElementById('periods'), now = selectedDay();
+    var list = document.getElementById('periods'), tp = today.split('-');
+    var now = new Date(+tp[0], +tp[1] - 1, +tp[2]);
+    list.textContent = '';
     if (!windows.length) {
       list.innerHTML = '<li class="past">Календарь не загружен.</li>';
       return;
@@ -362,23 +344,11 @@
   });
   dayInput.addEventListener('change', render);
 
-  // по желанию: отправить ответы боту, он запомнит признак и повторит решение в чате
-  function toChat() {
-    var answers = {};
-    ['committee', 'deal', 'orders'].forEach(function (k) { if (state[k] !== null) answers[k] = state[k]; });
-    tg.sendData(JSON.stringify({
-      status: state.status, action: state.action, instrument: state.instrument,
-      issuer: state.issuer, day: dayInput.value || today, answers: answers
-    }));
-  }
-
   if (inTelegram) {
     tg.ready();
     tg.expand();
     tg.MainButton.onClick(function () { tg.close(); });
-    document.getElementById('to-chat').addEventListener('click', toChat);
   }
-  renderPeriods();
   render();
 })();
 </script>
