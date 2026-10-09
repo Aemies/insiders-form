@@ -50,6 +50,7 @@
   #result.bad .verdict { color: var(--red); }
   #result.ok .verdict { color: var(--green); }
   #result p { margin: 6px 0 0; }
+  #result p.quote { border-left: 3px solid var(--hint); padding-left: 10px; color: var(--hint); }
   #result details { margin-top: 10px; }
   #result summary { color: var(--accent); cursor: pointer; }
   #result ul { margin: 6px 0 0; padding-left: 20px; }
@@ -239,9 +240,9 @@
   }
 
   var TEXTS = {
-    committee: 'Для вас действует запрещённый период до закрытия инсайдерского вопроса в АС Сенат ' +
-      '(статус «завершён», «принят» или «подписан всеми») ввиду вашего участия в подготовке или ' +
-      'голосовании на комитете по инсайдерскому вопросу, связанному с клиентом-эмитентом.',
+    committee: 'До момента закрытия инсайдерского вопроса в АС Сенат (статус «завершён», «принят» ' +
+      'или «подписан всеми») ввиду вашего участия в подготовке или голосовании на комитете по ' +
+      'инсайдерскому вопросу, связанному с клиентом-эмитентом.',
     deal: 'На работника, участвующего в кредитно-инвестиционной сделке с клиентом-эмитентом ценных ' +
       'бумаг, распространяется запрещённый период до подписания договора по сделке.',
     orders: 'В отношении инсайдера по признаку ПУРЦБ действует запрещённый период между получением ' +
@@ -259,12 +260,13 @@
       var w = v.window;
       return ['Действует запрещённый период, связанный с подготовкой отчётности Банка, с ' + fmt(w.start) +
         ' по ' + fmt(w.end) + ' включительно' + (w.publication ? ' (публикация ' + fmt(w.publication) + ')' : '') + '.',
-        PULSE];
+        { quote: PULSE }];
     }
     if (v.reason === 'no_data') {
       return ['Считать операцию разрешённой нельзя: календарь отчётности на ' + v.year +
         ' год ещё не загружен. Уточните график в комплаенс.'];
     }
+    if (!v.ok && TEXTS[v.reason]) return ['Для вас действует запрещённый период!', { quote: TEXTS[v.reason] }];
     var lines = [TEXTS[v.reason]];
     if (v.next) lines.push('Следующий запрещённый период: ' + fmt(v.next.start) + ' — ' + fmt(v.next.end) + '.');
     return lines;
@@ -284,7 +286,8 @@
     text.textContent = '';
     verdictLines(v).forEach(function (line) {
       var el = document.createElement('p');
-      el.textContent = line;
+      el.textContent = line.quote || line;
+      if (line.quote) el.className = 'quote';
       text.appendChild(el);
     });
     document.getElementById('r-terms').hidden = !(v.ok && v.reason !== 'non_insider');
