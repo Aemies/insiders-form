@@ -266,7 +266,7 @@
       return ['Считать операцию разрешённой нельзя: календарь отчётности на ' + v.year +
         ' год ещё не загружен. Уточните график в комплаенс.'];
     }
-    if (!v.ok && TEXTS[v.reason]) return ['Для вас действует запрещённый период!', { quote: TEXTS[v.reason] }];
+    if (v.reason === 'committee' || v.reason === 'deal') return ['Для вас действует запрещённый период!', { quote: TEXTS[v.reason] }];
     var lines = [TEXTS[v.reason]];
     if (v.next) lines.push('Следующий запрещённый период: ' + fmt(v.next.start) + ' — ' + fmt(v.next.end) + '.');
     return lines;
