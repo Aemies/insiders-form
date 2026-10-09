@@ -34,7 +34,7 @@
   h1 {
     font-weight: 700; font-size: 22px; line-height: 1.2; margin: 0 0 6px;
   }
-  h1::after { content: ""; display: block; width: 40px; height: 3px; background: var(--wine); margin-top: 10px; border-radius: 2px; }
+  h1::after { content: ""; display: block; width: 40px; height: 3px; background: var(--slate); margin-top: 10px; border-radius: 2px; }
   .lead { color: var(--hint); margin: 0 0 18px; font-size: 14px; }
   section {
     background: var(--card); border: 1px solid rgba(82, 95, 110, .45);
@@ -50,12 +50,12 @@
     transition: background-color .15s, border-color .15s;
     -webkit-tap-highlight-color: transparent;
   }
-  .chips button[aria-pressed="true"] { background: var(--wine); border-color: var(--wine); color: var(--accent-text); }
+  .chips button[aria-pressed="true"] { background: #F3ECE3; border-color: #F3ECE3; color: var(--ink); }
   input[type=date] {
     font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line);
     background: var(--ink); color: var(--text); width: 100%; max-width: 220px; color-scheme: dark;
   }
-  input[type=date]:focus { outline: 2px solid var(--wine); outline-offset: 1px; }
+  input[type=date]:focus { outline: 2px solid var(--sand); outline-offset: 1px; }
   .hint-red { color: var(--red); }
   .hint-green { color: var(--green); }
   ul.periods { list-style: none; margin: 0; padding: 0; }
@@ -75,7 +75,7 @@
   #result p { margin: 6px 0 0; }
   #result p.quote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--hint); }
   #result details { margin-top: 12px; }
-  #result summary { color: var(--sand); cursor: pointer; text-decoration: underline; text-decoration-color: var(--wine); text-underline-offset: 3px; }
+  #result summary { color: var(--sand); cursor: pointer; text-decoration: underline; text-decoration-color: var(--slate); text-underline-offset: 3px; }
   #result ul { margin: 6px 0 0; padding-left: 20px; }
   #r-periods { margin-top: 12px; }
   #r-periods .label { font-size: 14px; margin: 0 0 4px; }
@@ -374,7 +374,7 @@
     try {
       tg.setHeaderColor('#161C26');
       tg.setBackgroundColor('#161C26');
-      tg.MainButton.setParams({ color: '#8B2F37', text_color: '#F3ECE3' });
+      tg.MainButton.setParams({ color: '#F3ECE3', text_color: '#161C26' });
     } catch (e) {}
     tg.MainButton.onClick(function () { tg.close(); });
   }
