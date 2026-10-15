@@ -72,6 +72,8 @@
   }
   #result.bad .verdict { color: var(--red); }
   #result.ok .verdict { color: var(--green); }
+  #result.nodata { border-left-color: var(--hint); }
+  #result.nodata .verdict { color: var(--text); }
   #result p { margin: 6px 0 0; }
   #result p.quote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--hint); }
   #result details { margin-top: 12px; }
@@ -79,6 +81,12 @@
   #result ul { margin: 6px 0 0; padding-left: 20px; }
   #r-periods { margin-top: 12px; }
   #r-periods .label { font-size: 14px; margin: 0 0 4px; }
+  #add-calendar {
+    margin-top: 12px; width: 100%; border: 1px solid var(--line); background: var(--ink); color: var(--text);
+    border-radius: 10px; padding: 10px 14px; font: inherit; font-size: 15px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #add-calendar[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -159,6 +167,9 @@
   <div id="r-periods" hidden>
     <div class="label">Запрещённые периоды по отчётности Сбербанка</div>
     <ul class="periods" id="periods"></ul>
+    <button id="add-calendar" hidden>📅 Добавить в календарь телефона</button>
+    <div class="note" id="add-calendar-note" hidden>Бот пришлёт в чат файл с периодами: нажмите на него,
+      затем «Добавить все» на iPhone или откройте в Google Календаре на Android.</div>
   </div>
 </section>
 
@@ -170,30 +181,25 @@
   // у формы, открытой кнопкой клавиатуры, initData пустой, поэтому проверяем платформу
   var inTelegram = !!(tg && tg.platform && tg.platform !== 'unknown');
   var params = new URLSearchParams(location.search);
-  var state = { status: params.get('s') || null, issuer: null,
+  // признак всегда выбирают заново: форма открывается пустой из любой кнопки
+  var state = { status: null, issuer: null,
                 committee: null, deal: null, orders: null };
-  var CALENDAR = ['emitent', 'emitent_bitl'];  // к ним применяется общий календарь
+  var CALENDAR = ['emitent', 'emitent_bitl'];  // к ним применяется календарь отчётности
 
   function parseDay(s) { return new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)); }
   function fmt(d) { return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + d.getFullYear(); }
-  function readCalendar(suffix) {
-    return {
-      windows: (params.get('w' + suffix) || '').split(',').filter(Boolean).map(function (pair) {
-        var p = pair.split('-');
-        return { start: parseDay(p[0]), end: parseDay(p[1]), publication: p[2] ? parseDay(p[2]) : null };
-      }),
-      years: (params.get('y' + suffix) || '').split(',').filter(Boolean).map(Number)
-    };
-  }
-  var common = readCalendar('');
-  // Календарь признака: отдельный (w_признак), иначе общий для Эмитент и Эмитент+БИТЛ, иначе нет
-  function calendarFor(status) {
-    if (params.has('w_' + status)) return readCalendar('_' + status);
-    return CALENDAR.indexOf(status) >= 0 ? common : null;
-  }
+  var calendar = {
+    windows: (params.get('w') || '').split(',').filter(Boolean).map(function (pair) {
+      var p = pair.split('-');
+      return { start: parseDay(p[0]), end: parseDay(p[1]), publication: p[2] ? parseDay(p[2]) : null };
+    }),
+    years: (params.get('y') || '').split(',').filter(Boolean).map(Number)
+  };
+  // календарь есть только у признаков Эмитент и Эмитент+БИТЛ
+  function calendarFor(status) { return CALENDAR.indexOf(status) >= 0 ? calendar : null; }
   function inWindow(cal, d) { return cal.windows.filter(function (x) { return x.start <= d && d <= x.end; })[0]; }
-  // нет данных на год: для признаков общего календаря это «нельзя», для остальных календаря просто нет
-  function noData(cal, d) { return cal.years.indexOf(d.getFullYear()) < 0 && CALENDAR.indexOf(state.status) >= 0; }
+  // нет данных на год — это «нельзя»
+  function noData(cal, d) { return cal.years.indexOf(d.getFullYear()) < 0; }
   // сегодня по Москве, в формате YYYY-MM-DD
   var today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
   var dayInput = document.getElementById('day');
@@ -209,11 +215,7 @@
     var s = state, show = ['status'];
     if (!s.status) return { show: show, done: false };
     if (s.status === 'non_insider') return { show: show, done: true };
-    if (s.status === 'purcb') {
-      show.push('orders');
-      if (s.orders === false && calendarFor('purcb')) show.push('day');  // отдельный календарь ПУРЦБ
-      return { show: show, done: s.orders !== null };
-    }
+    if (s.status === 'purcb') { show.push('orders'); return { show: show, done: s.orders !== null }; }
     show.push('issuer');
     if (!s.issuer) return { show: show, done: false };
     if (s.issuer === 'sber') {
@@ -283,8 +285,8 @@
         { quote: PULSE }];
     }
     if (v.reason === 'no_data') {
-      return ['Считать операцию разрешённой нельзя: календарь отчётности на ' + v.year +
-        ' год ещё не загружен. Уточните график в комплаенс.'];
+      return ['Календарь отчётности на ' + v.year + ' год ещё не загружен, поэтому проверить эту дату ' +
+        'нельзя. Не считайте операцию разрешённой: уточните график в комплаенс или проверьте позже.'];
     }
     if (v.reason === 'committee' || v.reason === 'deal') return ['Для вас действует запрещённый период!', { quote: TEXTS[v.reason] }];
     var lines = [].concat(TEXTS[v.reason]);
@@ -298,10 +300,11 @@
     if (!p.done) { box.hidden = true; shownKey = null; return; }
     var v = verdict(p);
     box.hidden = false;
-    box.className = v.ok ? 'ok' : 'bad';
+    box.className = v.ok ? 'ok' : v.reason === 'no_data' ? 'nodata' : 'bad';
     document.getElementById('r-op').textContent = v.reason === 'non_insider' ? '' : operationLine(p);
     document.getElementById('r-verdict').textContent =
-      v.reason === 'non_insider' ? 'Ограничений нет' : v.ok ? '🟢 МОЖНО' : '⛔ ЗАПРЕЩЕНО';
+      v.reason === 'non_insider' ? 'Ограничений нет' : v.ok ? '🟢 МОЖНО' :
+      v.reason === 'no_data' ? '⚠️ НЕТ ДАННЫХ' : '⛔ ЗАПРЕЩЕНО';
     var text = document.getElementById('r-text');
     text.textContent = '';
     verdictLines(v).forEach(function (line) {
@@ -349,8 +352,8 @@
       hint.className = 'note hint-red';
       hint.textContent = '⛔ Дата попадает в запрещённый период с ' + fmt(w.start) + ' по ' + fmt(w.end) + '.';
     } else if (noData(cal, d)) {
-      hint.className = 'note hint-red';
-      hint.textContent = 'Календарь на ' + d.getFullYear() + ' год ещё не загружен.';
+      hint.className = 'note';
+      hint.textContent = '⚠️ Календарь на ' + d.getFullYear() + ' год ещё не загружен, данных на эту дату нет.';
     } else {
       hint.className = 'note hint-green';
       hint.textContent = 'На эту дату запрещённого периода нет.';
@@ -389,6 +392,18 @@
     });
   });
   dayInput.addEventListener('change', render);
+
+  // «Добавить в календарь»: открываем чат с ботом командой /start calendar, бот присылает .ics.
+  // Из формы, открытой кнопкой под сообщением, файл отдать боту нельзя (sendData не работает).
+  var botName = params.get('b');
+  if (inTelegram && botName && calendar.windows.length) {
+    document.getElementById('add-calendar').hidden = false;
+    document.getElementById('add-calendar-note').hidden = false;
+    document.getElementById('add-calendar').addEventListener('click', function () {
+      tg.openTelegramLink('https://t.me/' + encodeURIComponent(botName) + '?start=calendar');
+      tg.close();
+    });
+  }
 
   if (inTelegram) {
     tg.ready();
